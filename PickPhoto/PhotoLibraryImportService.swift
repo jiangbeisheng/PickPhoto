@@ -28,23 +28,11 @@ struct PhotoLibraryImportService {
     func importPhoto(_ photo: ExternalPhoto) async throws {
         let context = "import \(photo.fileName)"
         let preparedImport = try await Task.detached(priority: .userInitiated) {
-            let data = try ExternalPhotoFileReader.readImageData(from: photo.url, context: context)
             print("[PhotoLibraryImportService] \(context) original file path=\(photo.url.path)")
-            print("[PhotoLibraryImportService] \(context) original file bytes=\(data.count)")
-
-            let decodedImage = ExternalPhotoFileReader.decodeFullResolutionImage(
-                from: data,
-                url: photo.url,
-                context: "\(context) full-resolution validation"
-            )
-            ExternalPhotoFileReader.logUIImage(decodedImage, context: "\(context) full-resolution validation")
-
-            let temporaryURL = try ExternalPhotoFileReader.makeTemporaryOriginalFile(
-                from: data,
-                originalURL: photo.url,
+            return try ExternalPhotoFileReader.makeTemporaryOriginalFile(
+                from: photo.url,
                 context: context
             )
-            return PreparedPhotoImport(fileURL: temporaryURL, byteCount: data.count)
         }.value
 
         print("[PhotoLibraryImportService] \(context) addResource fileURL=\(preparedImport.fileURL.path)")
@@ -74,11 +62,6 @@ struct PhotoLibraryImportService {
             }
         }
     }
-}
-
-private struct PreparedPhotoImport: Sendable {
-    let fileURL: URL
-    let byteCount: Int
 }
 
 enum PhotoLibraryImportError: LocalizedError {

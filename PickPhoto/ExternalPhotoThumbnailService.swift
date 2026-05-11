@@ -12,6 +12,7 @@ final class ExternalPhotoThumbnailService {
     static let shared = ExternalPhotoThumbnailService()
 
     private let cache = NSCache<NSURL, UIImage>()
+    private let generationLimiter = AsyncSemaphore(value: 3)
 
     private init() {
         cache.countLimit = 600
@@ -23,7 +24,18 @@ final class ExternalPhotoThumbnailService {
     }
 
     func thumbnail(for url: URL, maxPixelSize: CGFloat) async -> UIImage? {
-        let key = url as NSURL
+        let key = cacheKey(for: url, maxPixelSize: maxPixelSize)
+
+        if let cachedImage = cache.object(forKey: key) {
+            return cachedImage
+        }
+
+        await generationLimiter.wait()
+        defer {
+            Task {
+                await generationLimiter.signal()
+            }
+        }
 
         if let cachedImage = cache.object(forKey: key) {
             return cachedImage
@@ -42,10 +54,9 @@ final class ExternalPhotoThumbnailService {
             let context = "thumbnail \(url.lastPathComponent)"
 
             do {
-                let data = try ExternalPhotoFileReader.readImageData(from: url, context: context)
-                return ExternalPhotoFileReader.decodeFullResolutionImage(
-                    from: data,
-                    url: url,
+                return try ExternalPhotoFileReader.decodeThumbnail(
+                    from: url,
+                    maxPixelSize: maxPixelSize,
                     context: context
                 )
             } catch {
@@ -53,6 +64,42 @@ final class ExternalPhotoThumbnailService {
                 return nil
             }
         }.value
+    }
+
+    private func cacheKey(for url: URL, maxPixelSize: CGFloat) -> NSURL {
+        let pixelSize = max(1, Int(maxPixelSize.rounded(.up)))
+        return url.appendingPathExtension("thumb-\(pixelSize)").absoluteURL as NSURL
+    }
+}
+
+private actor AsyncSemaphore {
+    private let limit: Int
+    private var permits: Int
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    init(value: Int) {
+        self.limit = max(1, value)
+        self.permits = max(1, value)
+    }
+
+    func wait() async {
+        if permits > 0 {
+            permits -= 1
+            return
+        }
+
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    func signal() {
+        if waiters.isEmpty {
+            permits = min(permits + 1, limit)
+            return
+        }
+
+        waiters.removeFirst().resume()
     }
 }
 

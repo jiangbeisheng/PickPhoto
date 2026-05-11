@@ -11,10 +11,6 @@ struct ContentView: View {
     @StateObject private var viewModel = ExternalPhotoBrowserViewModel()
     @State private var isShowingDirectoryPicker = false
 
-    private let columns = [
-        GridItem(.adaptive(minimum: 104, maximum: 160), spacing: 12)
-    ]
-
     var body: some View {
         NavigationStack {
             Group {
@@ -94,22 +90,14 @@ struct ContentView: View {
     }
 
     private var photoGrid: some View {
-        ScrollView {
-            LazyVGrid(columns: columns, spacing: 12) {
-                ForEach(viewModel.photos) { photo in
-                    ExternalPhotoThumbnailView(
-                        photo: photo,
-                        isSelected: viewModel.selectedPhotoIDs.contains(photo.id),
-                        isImported: viewModel.importedPhotoIDs.contains(photo.id),
-                        thumbnailService: .shared
-                    )
-                    .onTapGesture {
-                        viewModel.toggleSelection(for: photo)
-                    }
-                }
-            }
-            .padding()
+        ExternalPhotoCollectionView(
+            photos: viewModel.photos,
+            selectedPhotoIDs: viewModel.selectedPhotoIDs,
+            importedPhotoIDs: viewModel.importedPhotoIDs
+        ) { photo in
+            viewModel.toggleSelection(for: photo)
         }
+        .ignoresSafeArea(edges: .bottom)
     }
 
     private var statusBar: some View {
